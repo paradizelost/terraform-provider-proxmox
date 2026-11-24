@@ -661,6 +661,12 @@ func Update(
 					// Disk hasn't changed, skip update
 					continue
 				}
+
+				// move_disk and resize apply this change. Re-sending the options of a running VM's disk can store them
+				// as a pending change that still references the source volume, which the move deletes.
+				if OnlyLocationOrSizeChanged(oldDisks[iface], disk) && !ptr.Eq(oldDisks[iface].DatastoreID, disk.DatastoreID) {
+					continue
+				}
 				// update existing disk
 				tmp = currentDisks[iface]
 				// Never re-emit format= for an existing volume. UnmarshalJSON
@@ -719,4 +725,18 @@ func Update(
 	}
 
 	return rebootRequired, diags
+}
+
+// OnlyLocationOrSizeChanged reports whether newDisk differs from oldDisk in nothing but its datastore and size,
+// which are applied by the move_disk and resize APIs rather than a config update.
+func OnlyLocationOrSizeChanged(oldDisk, newDisk *vms.CustomStorageDevice) bool {
+	if oldDisk == nil || newDisk == nil {
+		return false
+	}
+
+	o, n := *oldDisk, *newDisk
+	o.DatastoreID, n.DatastoreID = nil, nil
+	o.Size, n.Size = nil, nil
+
+	return o.Equals(&n)
 }
